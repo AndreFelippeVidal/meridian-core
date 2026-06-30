@@ -1,6 +1,6 @@
 [project]
 name = "meridian-core"
-version = "0.1.0"
+version = "0.2.0"
 description = "Single source of truth for the Meridian fictional marketplace domain"
 requires-python = ">=3.12"
 dependencies = [
