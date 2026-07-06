@@ -1,5 +1,7 @@
 from meridian.synthetic import (
+    _EVENT_TYPES,
     generate_customers,
+    generate_events,
     generate_order_items,
     generate_orders,
     generate_payments,
@@ -99,3 +101,54 @@ def test_payments_one_per_order() -> None:
     payments = generate_payments(orders)
     assert payments.height == orders.height
     assert payments["order_id"].n_unique() == orders.height
+
+
+# ── Clickstream events (Project 2 — streaming) ────────────────────────────────
+
+
+def _events_fixture(n_sessions: int = 40, seed: int = 42):
+    customers = generate_customers(50)
+    products = generate_products(30)
+    return generate_events(customers, products, n_sessions, seed=seed)
+
+
+def test_generate_events_is_deterministic() -> None:
+    a = _events_fixture()
+    b = _events_fixture()
+    assert a.equals(b)
+    assert a["event_id"][0] == "E000001"
+
+
+def test_generate_events_valid_event_types() -> None:
+    events = _events_fixture()
+    assert set(events["event_type"].to_list()).issubset(set(_EVENT_TYPES))
+
+
+def test_generate_events_session_coherence() -> None:
+    events = _events_fixture()
+    # Every session belongs to exactly one customer, starts with page_view, and
+    # has strictly increasing timestamps.
+    for (session_id,), grp in events.group_by(["session_id"]):
+        assert grp["customer_id"].n_unique() == 1, f"{session_id} spans multiple customers"
+        assert grp["event_type"].to_list()[0] == "page_view"
+        ts = grp["ts"].to_list()
+        assert ts == sorted(ts) and len(ts) == len(set(ts)), f"{session_id} ts not monotonic"
+
+
+def test_generate_events_purchase_follows_checkout() -> None:
+    events = _events_fixture()
+    for (session_id,), grp in events.group_by(["session_id"]):
+        types = grp["event_type"].to_list()
+        if "purchase" in types:
+            assert "checkout_start" in types, f"{session_id} purchased without checkout_start"
+            assert types.index("checkout_start") < types.index("purchase")
+
+
+def test_generate_events_product_id_scoping() -> None:
+    events = _events_fixture()
+    product_scoped = {"product_view", "add_to_cart", "remove_from_cart", "purchase"}
+    for row in events.iter_rows(named=True):
+        if row["event_type"] in product_scoped:
+            assert row["product_id"] is not None
+        else:
+            assert row["product_id"] is None

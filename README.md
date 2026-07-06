@@ -25,11 +25,20 @@ df = generate_customers(n=1000, seed=42)
 print(df.head())
 ```
 
-## Domain entities (v0.1.0)
+## Domain entities (v0.3.0)
 
 | Generator | Returns | Key columns |
 |---|---|---|
-| `generate_customers(n, seed)` | `pl.DataFrame` | `customer_id`, `name`, `email`, `country`, `signup_date` |
+| `generate_customers(n, seed)` | `pl.DataFrame` | `customer_id`, `name`, `email`, `country`, `signup_date`, `segment` |
+| `generate_products(n, seed)` | `pl.DataFrame` | `product_id`, `title`, `category`, `price`, `cost`, `supplier_id` |
+| `generate_orders(customers_df, n, seed)` | `pl.DataFrame` | `order_id`, `customer_id`, `ordered_at`, `status`, `channel` |
+| `generate_order_items(orders_df, products_df, seed)` | `pl.DataFrame` | `order_item_id`, `order_id`, `product_id`, `qty`, `unit_price` |
+| `generate_payments(orders_df, seed)` | `pl.DataFrame` | `payment_id`, `order_id`, `amount`, `method`, `status`, `ts` |
+| `generate_events(customers_df, products_df, n_sessions, seed)` | `pl.DataFrame` | `event_id`, `customer_id`, `session_id`, `event_type`, `product_id`, `ts` |
+
+`generate_events` yields a **session-coherent** clickstream (Project 2): each session walks a plausible
+funnel (`page_view → product_view → add_to_cart → checkout_start → purchase`) for one customer, with
+monotonic timestamps. Deterministic under seed; real-time pacing is the producer's concern.
 
 ## Versioning
 
