@@ -6,6 +6,9 @@ from meridian.synthetic import (
     generate_orders,
     generate_payments,
     generate_products,
+    generate_reviews,
+    generate_support_tickets,
+    product_docs,
 )
 
 
@@ -152,3 +155,76 @@ def test_generate_events_product_id_scoping() -> None:
             assert row["product_id"] is not None
         else:
             assert row["product_id"] is None
+
+
+# ── Text corpus (Project 3 — RAG) ─────────────────────────────────────────────
+
+
+def test_product_docs_shape() -> None:
+    docs = product_docs()
+    assert len(docs) >= 6
+    ids = [d["doc_id"] for d in docs]
+    assert len(ids) == len(set(ids)), "doc_ids must be unique"
+    for doc in docs:
+        assert set(doc) == {"doc_id", "title", "category", "body"}
+        assert doc["body"].strip().startswith("#"), "body should be markdown"
+        assert len(doc["body"]) > 100
+
+
+def test_product_docs_is_immutable_snapshot() -> None:
+    a = product_docs()
+    a[0]["title"] = "mutated"
+    b = product_docs()
+    assert b[0]["title"] != "mutated", "callers must not mutate the module corpus"
+
+
+def test_generate_support_tickets_is_deterministic() -> None:
+    customers = generate_customers(50)
+    orders = generate_orders(customers, 100)
+    a = generate_support_tickets(customers, orders, 40)
+    b = generate_support_tickets(customers, orders, 40)
+    assert a.equals(b)
+    assert a.height == 40
+    assert a["ticket_id"][0] == "TCK000001"
+
+
+def test_support_tickets_referential_integrity() -> None:
+    customers = generate_customers(50)
+    orders = generate_orders(customers, 100)
+    tickets = generate_support_tickets(customers, orders, 60)
+    order_map = dict(
+        zip(orders["order_id"].to_list(), orders["customer_id"].to_list(), strict=True)
+    )
+    valid_status = {"open", "pending", "resolved", "closed"}
+    for row in tickets.iter_rows(named=True):
+        assert row["order_id"] in order_map
+        # the ticket's customer matches the order it references
+        assert row["customer_id"] == order_map[row["order_id"]]
+        assert row["status"] in valid_status
+        # the referenced order appears in the ticket text (some templates are
+        # account-scoped and only mention it in the body)
+        mentions_order = row["order_id"] in row["subject"] or row["order_id"] in row["body"]
+        assert mentions_order or "account" in row["subject"].lower()
+
+
+def test_generate_reviews_is_deterministic() -> None:
+    customers = generate_customers(50)
+    products = generate_products(30)
+    a = generate_reviews(customers, products, 40)
+    b = generate_reviews(customers, products, 40)
+    assert a.equals(b)
+    assert a.height == 40
+    assert a["review_id"][0] == "REV000001"
+
+
+def test_reviews_referential_integrity_and_rating_range() -> None:
+    customers = generate_customers(50)
+    products = generate_products(30)
+    reviews = generate_reviews(customers, products, 80)
+    product_ids = set(products["product_id"].to_list())
+    customer_ids = set(customers["customer_id"].to_list())
+    assert set(reviews["product_id"].to_list()).issubset(product_ids)
+    assert set(reviews["customer_id"].to_list()).issubset(customer_ids)
+    assert reviews["rating"].min() >= 1
+    assert reviews["rating"].max() <= 5
+    assert (reviews["body"].str.len_chars() > 0).all()
